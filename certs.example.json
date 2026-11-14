@@ -1,0 +1,21 @@
+{
+  "settings": {
+    "renew_days_before": 14,
+    "acme_sh": "~/.acme.sh/acme.sh",
+    "ca_server": "letsencrypt",
+    "key_length": "2048",
+    "dns_provider": "dns_cf",
+    "dns_env": {
+      "CF_Token": "your-cloudflare-api-token"
+    },
+    "origin_ip": "203.0.113.10",
+    "delete_expired_certs": true,
+    "log_file": "~/logs/renew_certs.log"
+  },
+  "domains": [
+    { "domain": "example.com" },
+    { "domain": "example.org", "check_hosts": ["example.org", "www.example.org", "shop.example.org"] },
+    { "domain": "example.net", "origin_ip": "" },
+    { "domain": "oldsite.example", "enabled": false }
+  ]
+}

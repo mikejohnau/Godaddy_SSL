@@ -1,0 +1,5 @@
+# Real config holds API tokens - never commit it
+certs.json
+*.log
+.renew_certs.lock
+__pycache__/
