@@ -59,8 +59,8 @@ If acme.sh's own renewal cron (`acme.sh --cron`) is installed, remove it with `a
 | `acme_sh` | `~/.acme.sh/acme.sh` | Path to acme.sh |
 | `ca_server` | `letsencrypt` | acme.sh CA (`letsencrypt`, `zerossl`, ...) |
 | `key_length` | `2048` | `2048`/`4096` for RSA, `ec-256`/`ec-384` for ECDSA |
-| `dns_provider` | `dns_cf` | acme.sh DNS hook |
-| `dns_env` | `{}` | Credentials for the DNS hook, e.g. `CF_Token` |
+| `dns_provider` | `dns_cf` | acme.sh DNS hook — see [DNS providers](#dns-providers) |
+| `dns_env` | `{}` | Credentials for the DNS hook, e.g. `CF_Token` — see [DNS providers](#dns-providers) |
 | `dns_sleep` | `0` | Seconds to wait for DNS propagation (0 = acme.sh default) |
 | `origin_ip` | `""` | Check certificates on this IP instead of what DNS returns |
 | `delete_expired_certs` | `true` | Remove expired certificates from cPanel storage |
@@ -69,7 +69,65 @@ If acme.sh's own renewal cron (`acme.sh --cron`) is installed, remove it with `a
 
 Each entry in `domains` needs `domain`, and can override `check_hosts` (default: the domain and `www.`), `enabled`, `renew_days_before`, `dns_provider`, `dns_env`, `dns_sleep` and `origin_ip`.
 
-### Sites behind Cloudflare's proxy
+## DNS providers
+
+Wildcard certificates need DNS validation: acme.sh publishes a temporary `_acme-challenge` TXT record through your DNS provider's API. Two settings choose how:
+
+- `dns_provider`: the name of the acme.sh DNS hook for your provider.
+- `dns_env`: that hook's credentials, as a map of the variable names it reads.
+
+acme.sh ships [205 DNS hooks](https://github.com/acmesh-official/acme.sh/tree/master/dnsapi). Here are some common ones, with the variables taken from each hook's source:
+
+| Provider | `dns_provider` | `dns_env` keys | Notes |
+|---|---|---|---|
+| Cloudflare | `dns_cf` | `CF_Token` | Token with *Zone → DNS → Edit* and *Zone → Zone → Read* on all zones. `CF_Account_ID` / `CF_Zone_ID` optional. Older global-key setups use `CF_Key` + `CF_Email` instead |
+| GoDaddy DNS | `dns_gd` | `GD_Key`, `GD_Secret` | GoDaddy limits production API access by account size; check yours works before relying on it |
+| cPanel Zone Editor | `dns_cpanel` | `cPanel_Username`, `cPanel_Apitoken`, `cPanel_Hostname` | For DNS hosted in cPanel itself. `cPanel_Hostname` is like `https://hostname:2083`; create the token in cPanel → Manage API Tokens |
+| AWS Route 53 | `dns_aws` | `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` | |
+| Azure DNS | `dns_azure` | `AZUREDNS_SUBSCRIPTIONID`, `AZUREDNS_TENANTID`, `AZUREDNS_APPID`, `AZUREDNS_CLIENTSECRET` | Service principal credentials |
+| Bunny DNS | `dns_bunny` | `BUNNY_API_KEY` | |
+| deSEC | `dns_desec` | `DEDYN_TOKEN` | |
+| DigitalOcean | `dns_dgon` | `DO_API_KEY` | |
+| DuckDNS | `dns_duckdns` | `DuckDNS_Token` | |
+| Dynu | `dns_dynu` | `Dynu_ClientId`, `Dynu_Secret` | |
+| Gandi LiveDNS | `dns_gandi_livedns` | `GANDI_LIVEDNS_KEY` | |
+| Hetzner Cloud DNS | `dns_hetznercloud` | `HETZNER_TOKEN` | |
+| Hurricane Electric | `dns_he` | `HE_Username`, `HE_Password` | |
+| IONOS | `dns_ionos` | `IONOS_PREFIX`, `IONOS_SECRET` | |
+| Linode / Akamai | `dns_linode_v4` | `LINODE_V4_API_KEY` | |
+| Name.com | `dns_namecom` | `Namecom_Username`, `Namecom_Token` | |
+| Namecheap | `dns_namecheap` | `NAMECHEAP_USERNAME`, `NAMECHEAP_API_KEY`, `NAMECHEAP_SOURCEIP` | Whitelist your server's IP in Namecheap. The hook rewrites all of a domain's records, so keep a backup |
+| NameSilo | `dns_namesilo` | `Namesilo_Key` | |
+| Netlify | `dns_netlify` | `NETLIFY_ACCESS_TOKEN` | |
+| OVHcloud | `dns_ovh` | `OVH_AK`, `OVH_AS`, `OVH_CK`, `OVH_END_POINT` | `OVH_END_POINT` defaults to `ovh-eu` |
+| Porkbun | `dns_porkbun` | `PORKBUN_API_KEY`, `PORKBUN_SECRET_API_KEY` | Turn on API access for each domain in Porkbun |
+| Vultr | `dns_vultr` | `VULTR_API_KEY` | |
+
+For any other provider, find its file in acme.sh's [`dnsapi` folder](https://github.com/acmesh-official/acme.sh/tree/master/dnsapi). The variables it needs are listed under `Options:` at the top of the file, and the [dnsapi wiki](https://github.com/acmesh-official/acme.sh/wiki/dnsapi) has setup notes for most providers.
+
+**One provider for everything** goes in `settings`:
+
+```json
+"settings": {
+  "dns_provider": "dns_porkbun",
+  "dns_env": { "PORKBUN_API_KEY": "pk1_...", "PORKBUN_SECRET_API_KEY": "sk1_..." }
+}
+```
+
+**A different provider or account for one domain** goes in that domain's entry, which overrides `settings`:
+
+```json
+"domains": [
+  { "domain": "example.com" },
+  { "domain": "example.org", "dns_provider": "dns_namecheap",
+    "dns_env": { "NAMECHEAP_USERNAME": "me", "NAMECHEAP_API_KEY": "...", "NAMECHEAP_SOURCEIP": "203.0.113.10" } },
+  { "domain": "example.net", "dns_env": { "CF_Token": "token-from-a-second-cloudflare-account" } }
+]
+```
+
+A domain's `dns_env` is added on top of the one in `settings`, so give each key its full value there. If DNS changes are slow to appear at your provider and validation fails, set `dns_sleep` (seconds) to make acme.sh wait longer before asking Let's Encrypt to check. After the first successful run, acme.sh also saves the credentials in `~/.acme.sh/account.conf`.
+
+## Sites behind Cloudflare's proxy
 
 Visitors to a proxied site see Cloudflare's own certificate, not yours. Your certificate secures the connection from Cloudflare to your server, and with SSL mode **Full (strict)** Cloudflare refuses to connect if it is invalid. Set `origin_ip` to your hosting server's IP (cPanel shows it as "Shared IP Address") so the script checks the certificate on your server rather than Cloudflare's. Use `"origin_ip": ""` on a domain that isn't hosted there.
 
